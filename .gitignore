@@ -1,0 +1,11 @@
+build/
+*.o
+*.obj
+*.a
+*.exe
+*.d
+*.dll
+*.exp
+*.lib
+.vs/
+out/
